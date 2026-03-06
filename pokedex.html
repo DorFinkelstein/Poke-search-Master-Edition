@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Poké-search: Master Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root { --pk-red: #dc2626; --pk-dark-red: #991b1b; }
+        body { background: #f8fafc; font-family: 'Inter', sans-serif; color: #1e293b; overflow-x: hidden; }
+        .header-gradient { background: linear-gradient(135deg, var(--pk-red) 0%, var(--pk-dark-red) 100%); border-bottom: 6px solid rgba(0,0,0,0.2); }
+        .metal-card { background: white; border: 1px solid #e2e8f0; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); border-radius: 1rem; position: relative; overflow: hidden; }
+        .metal-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: var(--pk-red); }
+        #suggestions { max-height: 250px; overflow-y: auto; z-index: 100; scrollbar-width: thin; }
+        .suggestion-item:hover { background-color: #f1f5f9; cursor: pointer; color: var(--pk-red); }
+        .stat-bar { height: 8px; border-radius: 4px; background: #f1f5f9; overflow: hidden; }
+        .stat-fill { height: 100%; transition: width 1s ease-in-out; }
+        .font-tech { font-family: 'Orbitron', sans-serif; }
+        
+        /* History Sidebar */
+        #historySidebar { transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); transform: translateX(100%); }
+        #historySidebar.active { transform: translateX(0); }
+        
+        /* Auth Modal */
+        .auth-input { width: 100%; padding: 12px; margin-bottom: 12px; border: 2px solid #e2e8f0; border-radius: 10px; outline: none; transition: border-color 0.2s; }
+        .auth-input:focus { border-color: var(--pk-red); }
+
+        /* Custom Scrollbar for City List */
+        #cityList::-webkit-scrollbar { width: 6px; }
+        #cityList::-webkit-scrollbar-track { background: #f1f1f1; }
+        #cityList::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        #cityList::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-slate-50">
+
+    <nav class="bg-slate-900 text-white px-6 py-2 flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
+        <div id="authStatus">GUEST ACCESS</div>
+        <div class="flex gap-4">
+            <button id="historyBtn" onclick="toggleHistory()" class="hover:text-yellow-400 transition-colors">Log-in to see history</button>
+            <button id="loginToggleBtn" onclick="openAuthModal()" class="bg-white text-slate-900 px-3 py-1 rounded transition-all hover:bg-slate-200">Login / Sign Up</button>
+        </div>
+    </nav>
+
+    <header class="header-gradient pt-8 pb-12 px-6 shadow-2xl relative">
+        <div class="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-8">
+            <div class="flex items-center gap-6">
+                <img src="image_dc5442.png" alt="Master Ball" class="w-20 h-20 object-contain drop-shadow-lg">
+                <div>
+                    <h1 class="text-white text-4xl font-black tracking-tighter font-tech">Poké-search</h1>
+                    <p class="text-rose-200 text-sm uppercase tracking-[0.3em] font-bold">Master Edition</p>
+                </div>
+            </div>
+
+            <div class="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+                <div class="relative w-full md:w-80">
+                    <div class="flex bg-white rounded-xl shadow-lg overflow-hidden focus-within:ring-4 ring-rose-400/30">
+                        <input type="text" id="searchInput" autocomplete="off" placeholder="Search Pokémon..." class="w-full px-5 py-3 outline-none text-slate-700 font-semibold">
+                        <button onclick="executeSearch()" class="bg-slate-800 hover:bg-black text-white px-6">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                        </button>
+                    </div>
+                    <div id="suggestions" class="absolute top-full left-0 right-0 bg-white shadow-2xl rounded-b-xl hidden"></div>
+                </div>
+                <button onclick="toggleCityModal()" class="whitespace-nowrap bg-yellow-400 hover:bg-yellow-500 text-slate-900 font-black py-3 px-6 rounded-xl shadow-lg font-tech text-xs tracking-tighter flex items-center gap-2">
+                    POKÉMON OF THE DAY
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-6 -mt-6">
+        <div id="loading" class="hidden text-center py-20"><div class="inline-block w-12 h-12 border-4 border-red-500 border-t-transparent rounded-full animate-spin"></div></div>
+        
+        <div id="pokedexContent" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-8 mb-12">
+            <div class="lg:col-span-4 space-y-6">
+                <div class="metal-card p-8">
+                    <div class="flex justify-between items-center mb-6">
+                        <span id="pokeID" class="font-tech text-slate-300 text-xl">#000</span>
+                        <div id="typeContainer" class="flex gap-2"></div>
+                    </div>
+                    <div class="bg-slate-50 rounded-2xl p-4 mb-6 border border-slate-100">
+                        <img id="mainSprite" src="" class="w-full aspect-square object-contain">
+                    </div>
+                    <h2 id="pokeName" class="text-4xl font-black text-slate-800 capitalize mb-4 border-b pb-4">---</h2>
+                    <div id="weatherBadge" class="hidden bg-yellow-100 text-yellow-800 text-[10px] font-bold p-2 rounded-lg mb-4 text-center"></div>
+                </div>
+            </div>
+            <div class="lg:col-span-8 space-y-6">
+                <div class="metal-card p-8">
+                    <h3 class="font-tech text-sm mb-8 text-red-600 font-bold uppercase tracking-tighter">Bio-Data Console</h3>
+                    <div id="statsGrid" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+                </div>
+                <div class="metal-card p-8 bg-slate-900 text-white border-none" id="reasonCard" style="display:none;">
+                    <p id="weatherReasonText" class="italic text-lg leading-relaxed text-slate-300"></p>
+                </div>
+                <button id="audioBtn" class="w-full bg-white border-2 p-4 rounded-xl flex items-center justify-center gap-4 hover:border-red-400 font-tech uppercase text-sm font-bold tracking-tighter transition-all active:bg-slate-50">Broadcast Cry</button>
+            </div>
+        </div>
+    </main>
+
+    <div id="authModal" class="fixed inset-0 bg-slate-900/90 z-[500] hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-sm w-full p-8 shadow-2xl relative">
+            <button onclick="closeAuthModal()" class="absolute top-4 right-6 text-2xl font-black text-slate-400 hover:text-black">&times;</button>
+            <h2 id="authTitle" class="font-tech text-xl mb-6 text-center">CREATE ACCOUNT</h2>
+            <input type="text" id="authUser" placeholder="Username" class="auth-input">
+            <input type="password" id="authPass" placeholder="Password" class="auth-input">
+            <button id="authPrimaryBtn" onclick="handleAuthAction()" class="w-full bg-red-600 text-white py-3 rounded-xl font-bold mb-4 shadow-lg active:scale-95 transition-transform">SIGN UP</button>
+            <p id="authSwitchText" class="text-center text-xs text-slate-500">Already have an account? <a href="#" onclick="switchAuthMode()" class="text-red-600 font-bold underline">Login</a></p>
+        </div>
+    </div>
+
+    <div id="historySidebar" class="fixed top-0 right-0 h-full w-80 bg-white shadow-[-10px_0_30px_rgba(0,0,0,0.1)] z-[450] flex flex-col">
+        <div class="bg-slate-800 p-6 text-white flex justify-between items-center">
+            <h3 class="font-tech text-sm tracking-widest">SATELLITE LOGS</h3>
+            <button onclick="toggleHistory()" class="text-2xl font-black">&times;</button>
+        </div>
+        <div id="historyList" class="flex-1 overflow-y-auto p-4 space-y-3"></div>
+        <div class="p-4 border-t bg-slate-50 flex justify-center text-[9px] text-slate-400 uppercase font-black tracking-widest">Master Database v4.0</div>
+    </div>
+
+    <div id="scanModal" class="fixed inset-0 bg-slate-900/95 z-[400] hidden flex flex-col items-center justify-center text-center">
+        <div class="relative w-48 h-48 mb-8">
+            <div class="absolute inset-0 border-8 border-yellow-400/10 rounded-full animate-pulse"></div>
+            <div class="absolute inset-0 border-8 border-t-yellow-400 rounded-full animate-spin"></div>
+            <div class="absolute inset-0 flex items-center justify-center"><img src="image_dc5442.png" class="w-20 h-20"></div>
+        </div>
+        <h2 class="font-tech text-white text-xl tracking-[0.4em] animate-pulse">SYNCING WITH SATELLITE</h2>
+        <p id="scanCityText" class="text-yellow-400 font-bold mt-2 uppercase tracking-widest text-xs"></p>
+    </div>
+
+    <div id="cityModal" class="fixed inset-0 bg-slate-900/90 z-[300] hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl border-4 border-yellow-400">
+            <div class="bg-slate-800 p-6 text-white flex justify-between items-center">
+                <h2 class="font-tech text-lg">GLOBAL WEATHER NETWORK</h2>
+                <button onclick="toggleCityModal()" class="text-2xl font-black">&times;</button>
+            </div>
+            <div class="p-6">
+                <div class="relative mb-6">
+                    <input type="text" id="citySearch" placeholder="Search 100+ Global Cities..." class="w-full p-4 border-2 border-slate-100 rounded-xl outline-none focus:border-yellow-400 font-bold text-slate-700 pr-12">
+                    <div class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                    </div>
+                </div>
+                <div id="cityList" class="max-h-[400px] overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-2 pr-2"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allNames = []; let curData = null; let currentUser = null; let authMode = 'signup';
+
+        const cityDB = {
+            // NORTH AMERICA
+            "New York": "KJFK", "Los Angeles": "KLAX", "Chicago": "KORD", "Miami": "KMIA", "San Francisco": "KSFO", "Seattle": "KSEA", "Boston": "KBOS", "Washington DC": "KIAD", "Toronto": "CYYZ", "Vancouver": "CYVR", "Mexico City": "MMMX", "Las Vegas": "KLAS", "Phoenix": "KPHX", "Dallas": "KDFW", "Atlanta": "KATL", "Houston": "KIAH",
+            // EUROPE
+            "London": "EGLL", "Paris": "LFPG", "Berlin": "EDDB", "Madrid": "LEMD", "Rome": "LIRF", "Amsterdam": "EHAM", "Vienna": "LOWW", "Prague": "LKPR", "Zurich": "LSZH", "Stockholm": "ESSA", "Oslo": "ENGM", "Copenhagen": "EKCH", "Dublin": "EIDW", "Athens": "LGAV", "Warsaw": "EPWA", "Brussels": "EBBR", "Munich": "EDDM", "Barcelona": "LEBL", "Lisbon": "LPPT", "Helsinki": "EFHK",
+            // ASIA
+            "Tokyo": "RJTT", "Seoul": "RKSI", "Singapore": "WSSS", "Hong Kong": "VHHH", "Bangkok": "VTBS", "Mumbai": "VABB", "Dubai": "OMDB", "Tel Aviv": "LLBG", "Beijing": "ZBAA", "Shanghai": "ZSPD", "Taipei": "RCTP", "Manila": "RPLL", "Jakarta": "WIII", "Kuala Lumpur": "WMKK", "Osaka": "RJBB", "Delhi": "VIDP", "Ho Chi Minh": "VVTS", "Abu Dhabi": "OMAA", "Doha": "OTHH",
+            // OCEANIA
+            "Sydney": "YSSY", "Melbourne": "YMML", "Auckland": "NZAA", "Brisbane": "YBBN", "Perth": "YPPH", "Wellington": "NZWN", "Christchurch": "NZCH",
+            // SOUTH AMERICA
+            "Sao Paulo": "SBGR", "Buenos Aires": "SAEZ", "Santiago": "SCEL", "Lima": "SPJC", "Bogota": "SKBO", "Rio de Janeiro": "SBGL", "Quito": "SEQU",
+            // AFRICA
+            "Cairo": "HECA", "Johannesburg": "FAOR", "Cape Town": "FACT", "Nairobi": "HKJK", "Casablanca": "GMMN", "Lagos": "DNMM", "Addis Ababa": "HAAB"
+        };
+
+        const db = {
+            getUsers: () => JSON.parse(localStorage.getItem('poke_users')) || {},
+            saveUser: (user, pass) => {
+                let users = db.getUsers();
+                if(users[user]) return false;
+                users[user] = { password: pass, history: [] };
+                localStorage.setItem('poke_users', JSON.stringify(users));
+                return true;
+            },
+            validate: (user, pass) => {
+                let users = db.getUsers();
+                return users[user] && users[user].password === pass;
+            },
+            addHistory: (user, pokeName) => {
+                if (!user) return;
+                let users = db.getUsers();
+                if (users[user]) {
+                    users[user].history = users[user].history.filter(item => item !== pokeName);
+                    users[user].history.unshift(pokeName);
+                    if (users[user].history.length > 30) users[user].history.pop();
+                    localStorage.setItem('poke_users', JSON.stringify(users));
+                }
+            }
+        };
+
+        window.onload = async () => {
+            const res = await fetch('https://pokeapi.co/api/v2/pokemon?limit=1500');
+            const data = await res.json(); 
+            allNames = data.results.map(p => p.name);
+            executeSearch("mew");
+        };
+
+        function openAuthModal() { document.getElementById('authModal').classList.remove('hidden'); }
+        function closeAuthModal() { document.getElementById('authModal').classList.add('hidden'); }
+        function switchAuthMode() {
+            authMode = authMode === 'signup' ? 'login' : 'signup';
+            document.getElementById('authTitle').innerText = authMode === 'signup' ? 'CREATE ACCOUNT' : 'USER LOGIN';
+            document.getElementById('authPrimaryBtn').innerText = authMode === 'signup' ? 'SIGN UP' : 'LOGIN';
+            document.getElementById('authSwitchText').innerHTML = authMode === 'signup' 
+                ? 'Already have an account? <a href="#" onclick="switchAuthMode()" class="text-red-600 font-bold underline">Login</a>'
+                : 'Need an account? <a href="#" onclick="switchAuthMode()" class="text-red-600 font-bold underline">Sign Up</a>';
+        }
+
+        function handleAuthAction() {
+            const u = document.getElementById('authUser').value.trim();
+            const p = document.getElementById('authPass').value.trim();
+            if(!u || !p) return;
+            if(authMode === 'signup') {
+                if(db.saveUser(u, p)) { alert("Success! Please Login."); switchAuthMode(); }
+                else alert("Taken!");
+            } else {
+                if(db.validate(u, p)) { currentUser = u; updateUIForLogin(); closeAuthModal(); }
+                else alert("Invalid!");
+            }
+        }
+
+        function updateUIForLogin() {
+            document.getElementById('authStatus').innerText = `Hello ${currentUser}!`;
+            document.getElementById('historyBtn').innerText = "History";
+            document.getElementById('loginToggleBtn').innerText = "Logout";
+            document.getElementById('loginToggleBtn').onclick = () => location.reload();
+        }
+
+        function toggleHistory() {
+            if(!currentUser) return; 
+            const side = document.getElementById('historySidebar');
+            side.classList.toggle('active');
+            if(side.classList.contains('active')) renderHistory();
+        }
+
+        function renderHistory() {
+            const list = document.getElementById('historyList');
+            list.innerHTML = "";
+            const users = db.getUsers();
+            const history = users[currentUser]?.history || [];
+            if (history.length === 0) { list.innerHTML = `<p class="text-center text-slate-400 text-xs mt-10">No logs found.</p>`; return; }
+            history.forEach(name => {
+                const div = document.createElement('div');
+                div.className = "flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:border-red-500 hover:shadow-md transition-all group";
+                div.onclick = () => { executeSearch(name); toggleHistory(); };
+                div.innerHTML = `<div class="w-10 h-10 bg-white rounded-full flex items-center justify-center border group-hover:border-red-200"><img src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${allNames.indexOf(name)+1}.png" class="w-8 h-8 object-contain" onerror="this.src='image_dc5442.png'"></div><span class="capitalize font-bold text-slate-700 text-sm">${name}</span>`;
+                list.appendChild(div);
+            });
+        }
+
+        async function executeSearch(q = null) {
+            const query = q || document.getElementById('searchInput').value.toLowerCase().trim();
+            if (!query) return;
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('pokedexContent').classList.add('hidden');
+            document.getElementById('suggestions').classList.add('hidden');
+            try {
+                const res = await fetch(`https://pokeapi.co/api/v2/pokemon/${query}`);
+                curData = await res.json();
+                if (currentUser) db.addHistory(currentUser, curData.name);
+                renderUI();
+            } catch (e) { alert("Not found."); }
+            finally { document.getElementById('loading').classList.add('hidden'); }
+        }
+
+        function renderUI() {
+            document.getElementById('pokedexContent').classList.remove('hidden');
+            document.getElementById('pokeName').innerText = curData.name;
+            document.getElementById('pokeID').innerText = `#${curData.id.toString().padStart(3, '0')}`;
+            document.getElementById('mainSprite').src = curData.sprites.other['official-artwork'].front_default;
+            const grid = document.getElementById('statsGrid'); grid.innerHTML = '';
+            curData.stats.forEach(s => {
+                const perc = Math.min((s.base_stat / 200) * 100, 100);
+                grid.innerHTML += `<div><div class="flex justify-between text-[10px] font-bold mb-1 uppercase text-slate-500"><span>${s.stat.name}</span><span>${s.base_stat}</span></div><div class="stat-bar"><div class="stat-fill bg-red-500" style="width:${perc}%"></div></div></div>`;
+            });
+            document.getElementById('audioBtn').onclick = () => { new Audio(curData.cries.latest).play(); };
+        }
+
+        function toggleCityModal() {
+            document.getElementById('cityModal').classList.toggle('hidden');
+            renderCities();
+        }
+
+        function renderCities(f = "") {
+            const list = document.getElementById('cityList'); list.innerHTML = "";
+            const sorted = Object.keys(cityDB).sort();
+            sorted.filter(c => c.toLowerCase().includes(f.toLowerCase())).forEach(c => {
+                const div = document.createElement('div');
+                div.className = "p-4 border border-slate-100 rounded-xl hover:bg-yellow-50 hover:border-yellow-200 cursor-pointer font-bold flex justify-between items-center transition-colors group";
+                div.innerHTML = `<span class="text-slate-700 group-hover:text-yellow-700">${c}</span> <span class="text-[9px] text-slate-300 font-tech">${cityDB[c]}</span>`;
+                div.onclick = () => startScanning(c, cityDB[c]);
+                list.appendChild(div);
+            });
+        }
+
+        async function startScanning(cityName, icao) {
+            toggleCityModal();
+            document.getElementById('scanModal').classList.remove('hidden');
+            document.getElementById('scanCityText').innerText = `Target: ${cityName}`;
+            setTimeout(async () => {
+                await fetchWeatherAndPoke(cityName, icao);
+                document.getElementById('scanModal').classList.add('hidden');
+            }, 1200);
+        }
+
+        async function fetchWeatherAndPoke(cityName, icao) {
+            try {
+                const proxy = 'https://corsproxy.io/?';
+                const target = encodeURIComponent(`https://aviationweather.gov/api/data/metar?ids=${icao}&format=json`);
+                const res = await fetch(proxy + target);
+                const data = await res.json();
+                const weather = data[0];
+                const temp = weather.temp;
+
+                let chosenPoke = "pikachu";
+                let reason = "";
+
+                if (temp > 30) { chosenPoke = "magmar"; reason = `Extreme Heat Wave! ${cityName} is a scorching ${temp}°C. Magmar is fueling up!`; }
+                else if (temp > 22) { chosenPoke = "bellossom"; reason = `Tropical warmth in ${cityName} (${temp}°C). Bellossom is dancing in the sun!`; }
+                else if (temp < 0) { chosenPoke = "glaceon"; reason = `Sub-zero conditions! ${cityName} is freezing at ${temp}°C. Glaceon feels right at home.`; }
+                else if (temp < 12) { chosenPoke = "swinub"; reason = `Chilly vibes in ${cityName} (${temp}°C). swinub is digging for snacks in the cold earth!`; }
+                else { chosenPoke = "eevee"; reason = `Mild weather in ${cityName} (${temp}°C). Eevee is ready for any evolution!`; }
+
+                await executeSearch(chosenPoke);
+                document.getElementById('reasonCard').style.display = 'block';
+                document.getElementById('weatherReasonText').innerText = reason;
+                document.getElementById('weatherBadge').classList.remove('hidden');
+                document.getElementById('weatherBadge').innerText = `📍 ${cityName} | ${temp}°C | ${weather.clouds[0]?.cover || 'CLR'}`;
+            } catch (e) { alert("Signal lost."); }
+        }
+
+        document.getElementById('citySearch').addEventListener('input', (e) => renderCities(e.target.value));
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            const val = e.target.value.toLowerCase();
+            const box = document.getElementById('suggestions');
+            box.innerHTML = ''; if(val.length < 2) return box.classList.add('hidden');
+            const matches = allNames.filter(n => n.includes(val)).slice(0, 5);
+            if(matches.length > 0) {
+                box.classList.remove('hidden');
+                matches.forEach(m => {
+                    const d = document.createElement('div');
+                    d.className = 'suggestion-item px-5 py-3 border-b text-sm font-semibold capitalize';
+                    d.innerText = m;
+                    d.onclick = () => { document.getElementById('searchInput').value = m; executeSearch(); };
+                    box.appendChild(d);
+                });
+            }
+        });
+    </script>
+</body>
+</html>
